@@ -9,7 +9,7 @@ LOGGERNAME = "notion_toys"
 
 
 def init_logger() -> None:
-    with resources.path("logger", CONFIGFILE) as log_config:
+    with resources.path("docs", CONFIGFILE) as log_config:
         with open(log_config, encoding="utf-8") as f:
             dictConfig(yaml.safe_load(f))
 

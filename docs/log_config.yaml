@@ -16,7 +16,7 @@ handlers:
     class: logging.FileHandler
     level: INFO
     formatter: verbose
-    filename: 'log/application.log'
+    filename: 'docs/application.log'
 loggers:
   notion_toys:
     level: INFO
