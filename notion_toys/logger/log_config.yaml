@@ -7,23 +7,21 @@ formatters:
     format: '%(asctime)s [%(levelname)s]: %(message)s'
     datefmt: '%Y-%m-%d %H:%M:%S'
 handlers:
-  consoleHandler:
+  console:
     class: logging.StreamHandler
-    level: INFO
+    level: DEBUG
     formatter: simple
     stream: ext://sys.stdout
-  fileHandler:
-    class: logging.handlers.RotatingFileHandler
-    level: DEBUG
+  file:
+    class: logging.FileHandler
+    level: INFO
     formatter: verbose
     filename: 'log/application.log'
-    maxBytes: 100000
-    backupCount: 1
 loggers:
   notion_toys:
     level: INFO
-    handlers: [consoleHandler, fileHandler]
+    handlers: [console, file]
     propagate: no
 root:
   level: INFO
-  handlers: []
+  handlers: [console]
