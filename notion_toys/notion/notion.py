@@ -1,444 +1,83 @@
 import json
 import re
-from dataclasses import dataclass, field
-from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
-from functools import cache
 from logging import Logger  # type hint
 from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
 
+from .filmarks_obj import FilmarksMoviePage, WebPage
+from .notion_obj import NotionDB, NotionMoviePage
 from .utils import (
     API_URL,
     DB_FILMARKS_KEY,
-    DB_PROGRESS_KEY,
     FILMARKS_ID,
     FILMARKS_URL,
     HEADERS,
+    NOTION_URL,
 )
 
 
-@cache
-def _db_process_id(year: int) -> str:
-    """映画進捗DBの該当年のページをNotionから取ってきてIDを返す"""
-
-    prop_title = PropTitle(name="年", text=str(year))
-    prop_year = PropDate(name="年初", date=date(year, 1, 1))
-
-    # ページが存在するならそのIDを返す
-    r = requests.post(
-        urljoin(API_URL, f"databases/{DB_PROGRESS_KEY}/query"),
-        headers=HEADERS,
-        data=json.dumps(prop_year.to_filter("equals")),
-    )
-    if r.status_code == 200 and r.json()["results"] != []:
-        return r.json()["results"][0]["id"].replace("-", "")
-
-    # ページが存在しないなら作成してそのIDを返す
-    r = requests.post(
-        urljoin(API_URL, "pages"),
-        headers=HEADERS,
-        data=json.dumps(
-            {
-                "parent": {"database_id": DB_PROGRESS_KEY},
-                "properties": {
-                    **prop_title.payload,
-                    **prop_year.payload,
-                },
-            }
-        ),
-    )
-    r.raise_for_status()
-
-    return r.json()["id"].replace("-", "")
-
-
-@dataclass(frozen=True)
-class Prop:
-    name: str
-
-    def to_payload(self):
-        raise NotImplementedError
-
-
-@dataclass(frozen=True)
-class PropNumber(Prop):
-    num: int | float
-
-    def to_payload(self) -> dict:
-        return {self.name: {"number": self.num}}
-
-
-@dataclass(frozen=True)
-class PropRichText(Prop):
-    text: str
-
-    def to_payload(self) -> dict:
-        return {self.name: {"rich_text": [{"text": {"content": self.text}}]}}
-
-
-@dataclass(frozen=True)
-class PropTitle(PropRichText):
-    key: str = "title"
-
-    def to_payload(self) -> dict:
-        return {self.name: {self.key: [{"text": {"content": self.text}}]}}
-
-
-@dataclass(frozen=True)
-class PropUrl(Prop):
-    url: str
-
-    def to_payload(self) -> dict:
-        return {self.name: {"url": self.url}}
-
-    def to_external_payload(self) -> dict:
-        return {"external": {"url": self.url}}
-
-
-@dataclass(frozen=True)
-class PropDate(Prop):
-    date: date | None
-
-    def to_payload(self) -> dict:
-        if not date:
-            return {}
-        return {self.name: {"date": {"start": self.date.isoformat()}}}
-
-    def to_filter(self, condition: str) -> dict:
-        if condition in (
-            "equals",
-            "before",
-            "after",
-            "on_or_before",
-            "on_or_after",
-        ):
-            value = self.date.isoformat()
-
-        elif condition in (
-            "is_empty",
-            "is_not_empty",
-        ):
-            value = True
-
-        elif condition in (
-            "past_week",
-            "past_month",
-            "past_year",
-            "this_week",
-            "next_week",
-            "next_month",
-            "next_year",
-        ):
-            value = {}
-
-        else:
-            raise ValueError
-
-        return {"filter": {"property": self.name, "date": {condition: value}}}
-
-
-@dataclass(frozen=True)
-class PropMultiselect(Prop):
-    items: tuple[str] = field(default_factory=tuple)
-
-    def to_payload(self) -> dict:
-        return {self.name: {"multi_select": [{"name": name} for name in self.items]}}
-
-
-@dataclass(frozen=True)
-class PropRelation(Prop):
-    related_db_id: str
-
-    def to_payload(self) -> dict:
-        return {
-            self.name: {
-                "relation": [{"id": self.related_db_id}],
-                "has_more": False,
-            }
-        }
-
-
-@dataclass(frozen=True)
-class MovieReviewPage:
-    title: PropTitle
-    score: PropNumber
-    review: PropRichText
-    movie_url: PropUrl
-    img_url: PropUrl
-    watch_date: PropDate
-    release_year: PropNumber
-    countries: PropMultiselect = field(hash=False)
-    genres: PropMultiselect = field(hash=False)
-    directors: PropMultiselect = field(hash=False)
-    writers: PropMultiselect = field(hash=False)
-    casts: PropMultiselect = field(hash=False)
-    icon_url: PropUrl
-    relation: PropRelation
-    db_id: str
-
-    @classmethod
-    def init(
-        cls,
-        title: str,
-        score: float,
-        review: str,
-        movie_url: str,
-        img_url: str,
-        watch_date: date,
-        release_year: int,
-        countries: tuple[str],
-        genres: tuple[str],
-        directors: tuple[str],
-        writers: tuple[str],
-        casts: tuple[str],
-        related_db_id: str | None = None,
-        db_id: str = DB_FILMARKS_KEY,
-    ):
-        try:
-            star_num = Decimal(str(score)).quantize(Decimal("0"), rounding=ROUND_HALF_UP)  # 正確に四捨五入
-            color = {0: "lightgray", 1: "lightgray", 2: "brown", 3: "yellow", 4: "orange", 5: "red"}[star_num]
-        except KeyError:
-            color = "gray"
-
-        if related_db_id is None:
-            related_db_id = _db_process_id(watch_date.year)
-
-        prop = {}
-        prop["title"] = PropTitle(name="タイトル", text=title)
-        prop["score"] = PropNumber(name="スコア", num=score)
-        prop["review"] = PropRichText(name="感想", text=review)
-        prop["movie_url"] = PropUrl(name="filmarks", url=movie_url)
-        prop["img_url"] = PropUrl(name="画像", url=img_url)
-        prop["watch_date"] = PropDate(name="鑑賞日", date=watch_date)
-        prop["release_year"] = PropNumber(name="上映年", num=release_year)
-        prop["countries"] = PropMultiselect(name="制作国", items=countries)
-        prop["genres"] = PropMultiselect(name="ジャンル", items=genres)
-        prop["directors"] = PropMultiselect(name="監督", items=directors)
-        prop["writers"] = PropMultiselect(name="脚本", items=writers)
-        prop["casts"] = PropMultiselect(name="出演者", items=casts)
-        prop["icon_url"] = PropUrl(name="アイコン", url=f"https://www.notion.so/icons/movie_{color}.svg")
-        prop["relation"] = PropRelation(name="集計", related_db_id=related_db_id)
-        prop["db_id"] = db_id
-
-        return cls(**prop)
-
-    @classmethod
-    def from_paylaod(cls, db_id: str, prop: dict):
-        return cls.init(
-            title=prop["タイトル"]["title"][0]["text"]["content"],
-            score=prop["スコア"]["number"],
-            review=prop["感想"]["rich_text"][0]["text"]["content"],
-            movie_url=prop["filmarks"]["url"],
-            img_url=prop["画像"]["url"],
-            watch_date=date.fromisoformat(prop["鑑賞日"]["date"]["start"]),
-            release_year=prop["上映年"]["number"],
-            countries=[item["name"] for item in prop["制作国"]["multi_select"]],
-            genres=[item["name"] for item in prop["ジャンル"]["multi_select"]],
-            directors=[item["name"] for item in prop["監督"]["multi_select"]],
-            writers=[item["name"] for item in prop["脚本"]["multi_select"]],
-            casts=[item["name"] for item in prop["出演者"]["multi_select"]],
-            related_db_id=prop["集計"]["relation"][0]["id"].replace("-", ""),
-            db_id=db_id.replace("-", ""),
-        )
-
-    def to_payload(self) -> dict:
-        return {
-            "parent": {"database_id": self.db_id},
-            "icon": self.icon_url.to_external_payload(),
-            "cover": self.img_url.to_external_payload(),
-            "properties": {
-                **self.title.to_payload(),
-                **self.score.to_payload(),
-                **self.review.to_payload(),
-                **self.watch_date.to_payload(),
-                **self.release_year.to_payload(),
-                **self.countries.to_payload(),
-                **self.genres.to_payload(),
-                **self.directors.to_payload(),
-                **self.writers.to_payload(),
-                **self.casts.to_payload(),
-                **self.movie_url.to_payload(),
-                **self.img_url.to_payload(),
-                **self.relation.to_payload(),
-            },
-        }
-
-
-@dataclass
-class NotionDB:
-    id: str
-    children: set = field(default_factory=set)
-
-    def add(self, child: object):
-        if not isinstance(child, MovieReviewPage):
-            raise ValueError
-
-        self.children.add(child)
-
-    def has(self, page: object) -> bool:
-        if not isinstance(page, MovieReviewPage):
-            raise ValueError
-
-        return page in self.children
-
-
-@dataclass
-class WebPage:
-    url: str
-    parser: str = "html.parser"
-
-
-@dataclass
-class FilmarksPage(WebPage):
-    title: str = ""
-    score: float = 0.0
-    review: str = ""
-    img_url: str = ""
-    watch_date: date | None = None
-    release_year: int | None = None
-    countries: list[str] = field(default_factory=list)
-    genres: list[str] = field(default_factory=list)
-    directors: list[str] = field(default_factory=list)
-    writers: list[str] = field(default_factory=list)
-    casts: list[str] = field(default_factory=list)
-
-    def __post_init__(self):
-        r = requests.get(self.url)
-        r.raise_for_status()
-        self.soup = BeautifulSoup(r.text, self.parser)
-        self.parsed = False
-
-    def parse(self) -> MovieReviewPage:
-        if not self.parsed:
-            # 映画のデータ
-            detail = self.soup.find("div", class_="p-content-detail__body")
-            other_info = list(detail.find("div", class_="p-content-detail__other-info").children)
-            people_list_others = list(
-                detail.find("div", class_="p-content-detail__people-list-others__wrapper").children
-            )
-
-            self.title = detail.find("h2", class_="p-content-detail__title").find("span").text
-            self.img_url = detail.find("img")["src"]
-            try:
-                self.release_year = datetime.strptime(other_info[0].text, "上映日：%Y年%m月%d日").year
-                self.countries = [country.text for country in other_info[2].find_all("a")]
-            except ValueError:
-                # https://filmarks.com/movies/55537 のように上映日情報がない映画もある
-                self.release_year = int(detail.find("h2", class_="p-content-detail__title").find("a").text[:-1])
-                self.countries = [country.text for country in other_info[1].find_all("a")]
-            self.genres = [genre.text for genre in detail.find("div", class_="p-content-detail__genre").find_all("a")]
-            self.directors = [person.text for person in people_list_others[0].find_all("a")]
-            try:
-                self.writers = [person.text for person in people_list_others[1].find_all("a")]
-            except IndexError:
-                # https://filmarks.com/movies/80435 のように脚本情報がない映画もある
-                pass
-            try:
-                self.casts = [
-                    cast.text for cast in detail.find("div", id="js-content-detail-people-cast").find_all("a")
-                ]
-            except AttributeError:
-                # https://filmarks.com/movies/86613 のように出演者情報がない映画もある
-                pass
-
-            # レビューのデータ
-            card_review = self.soup.find("div", class_="p-mark")
-
-            ## 鑑賞日
-            self.watch_date = datetime.strptime(card_review.find("time")["datetime"], "%Y-%m-%d %H:%M").date()
-            ## スコア
-            self.score = float(card_review.find("div", class_="c-rating__score").text)
-            ## 感想
-            self.review = card_review.find("div", class_="p-mark__review").text
-
-            self.parsed = True
-
-        return MovieReviewPage.init(
-            title=self.title,
-            score=self.score,
-            review=self.review,
-            movie_url=self.url,
-            img_url=self.img_url,
-            watch_date=self.watch_date,
-            release_year=self.release_year,
-            countries=self.countries,
-            genres=self.genres,
-            directors=self.directors,
-            writers=self.writers,
-            casts=self.casts,
-        )
-
-
 def run(logger: Logger):
-    # ------------------------------------------------------------------------------------------------------------
-    # すでに記録してあるページをキャッシュする
-    # ------------------------------------------------------------------------------------------------------------
-    logger.info("Notionの映画ページをキャッシュします")
+
+    # Notionデータベースの情報を取ってくる
     db = NotionDB(id=DB_FILMARKS_KEY)
 
-    pages = []
+    movie_page_objs = []
     payload = {"page_size": 100}  # Max
     while True:
         r = requests.post(
             urljoin(API_URL, f"databases/{DB_FILMARKS_KEY}/query"), headers=HEADERS, data=json.dumps(payload)
         )
-        pages += r.json()["results"]
+        r.raise_for_status()
 
-        if r.status_code != 200:
-            break
-
-        if r.json()["has_more"]:
-            payload["start_cursor"] = r.json()["next_cursor"]
+        data = r.json()
+        movie_page_objs += data["results"]
+        if data["has_more"]:
+            payload["start_cursor"] = data["next_cursor"]
             continue
 
         break
 
-    logger.debug(f"Notionの映画ページを{len(pages)}ページキャッシュしました")
+    for obj in movie_page_objs:
+        db.add(
+            NotionMoviePage.from_paylaod(
+                db_id=obj["parent"]["database_id"],
+                prop=obj["properties"],
+            )
+        )
 
-    for page in pages:
-        db.add(MovieReviewPage.from_paylaod(db_id=page["parent"]["database_id"], prop=page["properties"]))
+    logger.debug(f"Notion読取完了 - {len(db.children)}ページ")
 
-    # ------------------------------------------------------------------------------------------------------------
-    # ページ数
-    # ------------------------------------------------------------------------------------------------------------
-    logger.info("Filmarksのレビューがマイページ何ページ分かスクレイピングします")
+    # Filmarksのスクレイピング
+    filmarks_mypage = WebPage(url=urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}"))
+    soup = filmarks_mypage.scrape()
+
+    # レビューがマイページ何ページにわたるかスクレイピング
     num_pages = 1
-    res = requests.get(urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}"))
-    soup = BeautifulSoup(res.text, "html.parser")
-    pagination_last = soup.find("a", class_="c-pagination__last")["href"]
-    result = re.match(f"/users/{FILMARKS_ID}\?page=(\d+)", pagination_last)
+    result = re.match(
+        pattern=f"/users/{FILMARKS_ID}\?page=(\d+)",
+        string=soup.find("a", class_="c-pagination__last")["href"],
+    )
     if result:
         num_pages = int(result.group(1))
-        logger.debug(f"Filmarksのレビューはマイページ{num_pages}ページ分です")
 
-    # ------------------------------------------------------------------------------------------------------------
-    # 全レビューを読み取る
-    # ------------------------------------------------------------------------------------------------------------
-    logger.info("Filmarksの全レビューをスクレイピングしてNotionページを作成します")
+    # 全レビューをNotionに
     for num in range(1, num_pages + 1):
-        # ユーザーページnum番目
-        r = requests.get(urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}?page={num}"))
-        r.raise_for_status()
-
-        soup = BeautifulSoup(r.text, "html.parser")
+        filmarks_mypage.url = urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}?page={num}")
+        soup = filmarks_mypage.scrape()
 
         for card_title in soup.find_all("h3", class_="c-content-card__title"):
-            movie_path_query = card_title.find("a")["href"]
-            fpage = FilmarksPage(url=urljoin(FILMARKS_URL, movie_path_query))
+            fpage = FilmarksMoviePage(url=urljoin(FILMARKS_URL, card_title.find("a")["href"]))
+            npage = NotionMoviePage.init(**fpage.parse())
+
+            if db.has(npage):
+                logger.debug(f"変更なし -「{npage.title.text}」")
+                continue
 
             try:
-                page = fpage.parse()
-                if db.has(page):
-                    logger.debug(f"「{page.title.text}」は同期済みです")
-                    continue
-                logger.info(f"「{page.title.text}」をNotionに同期します")
-                r = requests.post(urljoin(API_URL, "pages"), headers=HEADERS, data=json.dumps(page.to_payload()))
-                r.raise_for_status()
-                logger.info(f"「{page.title.text}」のNotionページを作成しました (id: {r.json()['id']})")
+                id = npage.create()
+                logger.info(f"同期成功 -「{npage.title.text}」({urljoin(NOTION_URL, id)})")
 
             except Exception as e:
-                logger.error(e)
+                logger.error(f"同期失敗 - 「{npage.title.text}」でエラーが起きました - {e}")
                 continue
