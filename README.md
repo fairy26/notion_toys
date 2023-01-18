@@ -5,10 +5,18 @@
 
 # 実行方法
 
-モジュールで実行する
+パッケージ管理に Poetry を使っているので適宜インストールする - [Poetry Introduction](https://python-poetry.org/docs/)
 
 ```bash
-$ python -m notion_toys --filmarks
+$ git clone https://github.com/fairy26/notion_toys.git
+$ cd notion_toys
+$ poetry install --no-dev
+```
+
+実行時はモジュールで
+
+```bash
+$ poetry run python -m notion_toys --filmarks
 ```
 
 -   args
