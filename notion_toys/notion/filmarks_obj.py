@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -74,7 +75,14 @@ class FilmarksMoviePage(WebPage):
             ## スコア
             self.score = float(card_review.find("div", class_="c-rating__score").text)
             ## 感想
-            self.review = card_review.find("div", class_="p-mark__review").text
+            review_div = card_review.find("div", class_="p-mark__review")
+            if review_div.a:
+                # レビュー内容が長すぎて「続きを読む」に丸めこまれている場合
+                review_page = WebPage(url=urljoin(self.url, review_div.a["href"]))
+                review_div = review_page.scrape().find("div", class_="p-mark__review")
+            for br in review_div.select("br"):
+                br.replace_with("\n")
+            self.review = review_div.text
 
             self.parsed = True
 
