@@ -2,6 +2,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from functools import cache
 from logging import Logger  # type hint
 from urllib.parse import urljoin
@@ -178,7 +179,9 @@ class MovieReviewPage:
     relation: PropRelation
     db_id: str
 
+    @classmethod
     def init(
+        cls,
         title: str,
         score: float,
         review: str,
@@ -191,9 +194,18 @@ class MovieReviewPage:
         directors: tuple[str],
         writers: tuple[str],
         casts: tuple[str],
-        db_id: str = DB_FILMARKS_KEY,
         related_db_id: str | None = None,
-    ) -> dict:
+        db_id: str = DB_FILMARKS_KEY,
+    ):
+        try:
+            star_num = Decimal(str(score)).quantize(Decimal("0"), rounding=ROUND_HALF_UP)  # 正確に四捨五入
+            color = {0: "lightgray", 1: "lightgray", 2: "brown", 3: "yellow", 4: "orange", 5: "red"}[star_num]
+        except KeyError:
+            color = "gray"
+
+        if related_db_id is None:
+            related_db_id = _db_process_id(watch_date.year)
+
         prop = {}
         prop["title"] = PropTitle(name="タイトル", text=title)
         prop["score"] = PropNumber(name="スコア", num=score)
@@ -207,19 +219,30 @@ class MovieReviewPage:
         prop["directors"] = PropMultiselect(name="監督", items=directors)
         prop["writers"] = PropMultiselect(name="脚本", items=writers)
         prop["casts"] = PropMultiselect(name="出演者", items=casts)
+        prop["icon_url"] = PropUrl(name="アイコン", url=f"https://www.notion.so/icons/movie_{color}.svg")
+        prop["relation"] = PropRelation(name="集計", related_db_id=related_db_id)
         prop["db_id"] = db_id
 
-        try:
-            color = {0: "lightgray", 1: "lightgray", 2: "brown", 3: "yellow", 4: "orange", 5: "red"}[round(score)]
-        except KeyError:
-            color = "gray"
-        prop["icon_url"] = PropUrl(name="アイコン", url=f"https://www.notion.so/icons/movie_{color}.svg")
+        return cls(**prop)
 
-        if related_db_id is None:
-            related_db_id = _db_process_id(prop["watch_date"].date.year)
-        prop["relation"] = PropRelation(name="集計", related_db_id=related_db_id)
-
-        return prop
+    @classmethod
+    def from_paylaod(cls, db_id: str, prop: dict):
+        return cls.init(
+            title=prop["タイトル"]["title"][0]["text"]["content"],
+            score=prop["スコア"]["number"],
+            review=prop["感想"]["rich_text"][0]["text"]["content"],
+            movie_url=prop["filmarks"]["url"],
+            img_url=prop["画像"]["url"],
+            watch_date=date.fromisoformat(prop["鑑賞日"]["date"]["start"]),
+            release_year=prop["上映年"]["number"],
+            countries=[item["name"] for item in prop["制作国"]["multi_select"]],
+            genres=[item["name"] for item in prop["ジャンル"]["multi_select"]],
+            directors=[item["name"] for item in prop["監督"]["multi_select"]],
+            writers=[item["name"] for item in prop["脚本"]["multi_select"]],
+            casts=[item["name"] for item in prop["出演者"]["multi_select"]],
+            related_db_id=prop["集計"]["relation"][0]["id"].replace("-", ""),
+            db_id=db_id.replace("-", ""),
+        )
 
     def to_payload(self) -> dict:
         return {
@@ -333,21 +356,19 @@ class FilmarksPage(WebPage):
 
             self.parsed = True
 
-        return MovieReviewPage(
-            **MovieReviewPage.init(
-                title=self.title,
-                score=self.score,
-                review=self.review,
-                movie_url=self.url,
-                img_url=self.img_url,
-                watch_date=self.watch_date,
-                release_year=self.release_year,
-                countries=self.countries,
-                genres=self.genres,
-                directors=self.directors,
-                writers=self.writers,
-                casts=self.casts,
-            )
+        return MovieReviewPage.init(
+            title=self.title,
+            score=self.score,
+            review=self.review,
+            movie_url=self.url,
+            img_url=self.img_url,
+            watch_date=self.watch_date,
+            release_year=self.release_year,
+            countries=self.countries,
+            genres=self.genres,
+            directors=self.directors,
+            writers=self.writers,
+            casts=self.casts,
         )
 
 
@@ -378,24 +399,7 @@ def run(logger: Logger):
     logger.debug(f"Notionの映画ページを{len(pages)}ページキャッシュしました")
 
     for page in pages:
-        prop = {}
-        prop["title"] = page["properties"]["タイトル"]["title"][0]["text"]["content"]
-        prop["score"] = page["properties"]["スコア"]["number"]
-        prop["review"] = page["properties"]["感想"]["rich_text"][0]["text"]["content"]
-        prop["movie_url"] = page["properties"]["filmarks"]["url"]
-        prop["img_url"] = page["properties"]["画像"]["url"]
-        prop["watch_date"] = date.fromisoformat(page["properties"]["鑑賞日"]["date"]["start"])
-        prop["release_year"] = page["properties"]["上映年"]["number"]
-        prop["countries"] = [item["name"] for item in page["properties"]["制作国"]["multi_select"]]
-        prop["genres"] = [item["name"] for item in page["properties"]["ジャンル"]["multi_select"]]
-        prop["directors"] = [item["name"] for item in page["properties"]["監督"]["multi_select"]]
-        prop["writers"] = [item["name"] for item in page["properties"]["脚本"]["multi_select"]]
-        prop["casts"] = [item["name"] for item in page["properties"]["出演者"]["multi_select"]]
-        prop["related_db_id"] = page["properties"]["集計"]["relation"][0]["id"].replace("-", "")
-        prop["db_id"] = page["parent"]["database_id"].replace("-", "")
-
-        prop = MovieReviewPage.init(**prop)
-        db.add(MovieReviewPage(**prop))
+        db.add(MovieReviewPage.from_paylaod(db_id=page["parent"]["database_id"], prop=page["properties"]))
 
     # ------------------------------------------------------------------------------------------------------------
     # ページ数
