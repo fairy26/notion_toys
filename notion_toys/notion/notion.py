@@ -41,6 +41,7 @@ def run(logger: Logger):
     for obj in movie_page_objs:
         db.add(
             NotionMoviePage.from_paylaod(
+                id=obj["id"],
                 db_id=obj["parent"]["database_id"],
                 prop=obj["properties"],
             )
@@ -70,14 +71,24 @@ def run(logger: Logger):
             fpage = FilmarksMoviePage(url=urljoin(FILMARKS_URL, card_title.find("a")["href"]))
             npage = NotionMoviePage.init(**fpage.parse())
 
-            if db.has(npage):
-                logger.debug(f"変更なし -「{npage.title.text}」")
-                continue
+            if not db.has(npage):
+                try:  # レビューの新規作成
+                    id = npage.create()
+                    logger.info(f"同期成功 -「{npage.title.text}」を追加({urljoin(NOTION_URL, id)})")
+                except Exception as e:
+                    logger.error(f"同期失敗 - 「{npage.title.text}」の追加でエラーが起きました\n{e}\n{npage}")
+                finally:
+                    continue
 
-            try:
-                id = npage.create()
-                logger.info(f"同期成功 -「{npage.title.text}」({urljoin(NOTION_URL, id)})")
+            old_page = db.get_page(npage)
 
-            except Exception as e:
-                logger.error(f"同期失敗 - 「{npage.title.text}」でエラーが起きました - {e}")
-                continue
+            if old_page is not None and npage != old_page:
+                try:  # レビューの更新
+                    id = old_page.update(npage)
+                    logger.info(f"同期成功 -「{npage.title.text}」を更新({urljoin(NOTION_URL, id)})")
+                except Exception as e:
+                    logger.error(f"同期失敗 - 「{npage.title.text}」の更新でエラーが起きました\n{e}\n{npage}")
+                finally:
+                    continue
+
+            logger.debug(f"変更なし -「{npage.title.text}」")

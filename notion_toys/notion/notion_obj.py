@@ -3,11 +3,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from functools import cache
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
+from deepdiff import DeepDiff
 
-from .utils import API_URL, DB_FILMARKS_KEY, DB_PROGRESS_KEY, HEADERS
+from .utils import API_URL, DB_FILMARKS_KEY, DB_PROGRESS_KEY, FILMARKS_URL, HEADERS
 
 
 @cache
@@ -86,6 +87,12 @@ class PropUrl(Prop):
 
     def to_external_payload(self) -> dict:
         return {"external": {"url": self.url}}
+
+    def to_filmarks_id(self) -> str:
+        if FILMARKS_URL not in self.url:
+            raise ValueError("FilmarksのURLに対して呼んでください")
+
+        return urlparse(self.url).path.split("/")[-1]
 
 
 @dataclass(frozen=True)
@@ -168,6 +175,7 @@ class NotionMoviePage:
     icon_url: PropUrl
     relation: PropRelation
     db_id: str
+    id: str = field(hash=False, compare=False)
 
     @classmethod
     def init(
@@ -184,8 +192,9 @@ class NotionMoviePage:
         directors: tuple[str],
         writers: tuple[str],
         casts: tuple[str],
-        related_db_id: str | None = None,
+        related_db_id: str = "",
         db_id: str = DB_FILMARKS_KEY,
+        id: str = "",
     ):
         try:
             star_num = Decimal(str(score)).quantize(Decimal("0"), rounding=ROUND_HALF_UP)  # 正確に四捨五入
@@ -193,7 +202,7 @@ class NotionMoviePage:
         except KeyError:
             color = "gray"
 
-        if related_db_id is None:
+        if not related_db_id:
             related_db_id = _db_process_id(watch_date.year)
 
         prop = {}
@@ -212,11 +221,12 @@ class NotionMoviePage:
         prop["icon_url"] = PropUrl(name="アイコン", url=f"https://www.notion.so/icons/movie_{color}.svg")
         prop["relation"] = PropRelation(name="集計", related_db_id=related_db_id)
         prop["db_id"] = db_id
+        prop["id"] = id
 
         return cls(**prop)
 
     @classmethod
-    def from_paylaod(cls, db_id: str, prop: dict):
+    def from_paylaod(cls, id: str, db_id: str, prop: dict):
         return cls.init(
             title=prop["タイトル"]["title"][0]["text"]["content"],
             score=prop["スコア"]["number"],
@@ -232,6 +242,7 @@ class NotionMoviePage:
             casts=tuple([item["name"] for item in prop["出演者"]["multi_select"]]),
             related_db_id=prop["集計"]["relation"][0]["id"].replace("-", ""),
             db_id=db_id.replace("-", ""),
+            id=id.replace("-", ""),
         )
 
     def _to_payload(self) -> dict:
@@ -262,20 +273,71 @@ class NotionMoviePage:
         r.raise_for_status()
         return r.json()["id"].replace("-", "")
 
+    def _diff(self, target: object) -> dict:
+        if not isinstance(target, NotionMoviePage):
+            raise ValueError
+
+        ddiff = DeepDiff(self, target, exclude_paths="root.id", view="tree")
+
+        new_prop = {}
+
+        for key in ("values_changed", "iterable_item_added", "iterable_item_removed"):
+            if key not in ddiff:
+                continue
+
+            for changed in ddiff[key]:
+                while not issubclass(type(changed.t2), Prop):
+                    changed = changed.up
+
+                attr = changed.t2
+                attr_name = changed.path()
+
+                if attr_name == "root.icon_url":
+                    new_prop["icon"] = attr.to_external_payload()
+                    continue
+
+                if attr_name == "root.img_url":
+                    new_prop["cover"] = attr.to_external_payload()
+
+                if "properties" in new_prop:
+                    new_prop["properties"] |= attr.to_payload()
+                else:
+                    new_prop["properties"] = attr.to_payload()
+
+        return new_prop
+
+    def update(self, new_page: object) -> str:
+        if not self.id:
+            raise ValueError("Notionの映画ページのIDを指定してください")
+
+        url = urljoin(API_URL, f"pages/{self.id}")
+        r = requests.patch(url, headers=HEADERS, data=json.dumps(self._diff(new_page)))
+        r.raise_for_status()
+        return r.json()["id"].replace("-", "")
+
 
 @dataclass
 class NotionDB:
     id: str
-    children: set = field(default_factory=set)
+    children: dict = field(default_factory=dict)
 
     def add(self, child: object):
         if not isinstance(child, NotionMoviePage):
             raise ValueError
 
-        self.children.add(child)
+        self.children[child.movie_url.to_filmarks_id()] = child
 
     def has(self, page: object) -> bool:
         if not isinstance(page, NotionMoviePage):
             raise ValueError
 
-        return page in self.children
+        return page.movie_url.to_filmarks_id() in self.children
+
+    def get_page(self, page: object) -> NotionMoviePage | None:
+        if not isinstance(page, NotionMoviePage):
+            raise ValueError
+
+        try:
+            return self.children[page.movie_url.to_filmarks_id()]
+        except KeyError:
+            return None
