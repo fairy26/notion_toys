@@ -50,9 +50,13 @@ class FilmarksMoviePage(WebPage):
             self.img_url = detail.find("img")["src"]
             self.release_year = int(detail.find("h2", class_="p-content-detail__title").find("a").text[:-1])
             self.countries = tuple([country.text for country in other_info.find_all("a")])
-            self.genres = tuple(
-                [genre.text for genre in detail.find("div", class_="p-content-detail__genre").find_all("a")]
-            )
+            try:
+                self.genres = tuple(
+                    [genre.text for genre in detail.find("div", class_="p-content-detail__genre").find_all("a")]
+                )
+            except AttributeError:
+                # https://filmarks.com/movies/24302 のように出演者情報がない映画もある
+                pass
             self.directors = tuple([person.text for person in people_list_others[0].find_all("a")])
             try:
                 self.writers = tuple([person.text for person in people_list_others[1].find_all("a")])
@@ -76,7 +80,7 @@ class FilmarksMoviePage(WebPage):
             self.score = float(card_review.find("div", class_="c-rating__score").text)
             ## 感想
             review_div = card_review.find("div", class_="p-mark__review")
-            if review_div.a:
+            if review_div.a and "続きを読む" in review_div.a.text:
                 # レビュー内容が長すぎて「続きを読む」に丸めこまれている場合
                 review_page = WebPage(url=urljoin(self.url, review_div.a["href"]))
                 review_div = review_page.scrape().find("div", class_="p-mark__review")

@@ -100,7 +100,7 @@ class PropDate(Prop):
     date: date | None
 
     def to_payload(self) -> dict:
-        if not date:
+        if not self.date:
             return {}
         return {self.name: {"date": {"start": self.date.isoformat()}}}
 
@@ -142,7 +142,11 @@ class PropMultiselect(Prop):
     items: tuple[str] = field(default_factory=tuple)
 
     def to_payload(self) -> dict:
-        return {self.name: {"multi_select": [{"name": name} for name in self.items]}}
+        items = self.items
+        if len(items) > 100:
+            # マルチセレクトは100以下の制限があるため上位100個に限定
+            items = items[:100]
+        return {self.name: {"multi_select": [{"name": name} for name in items]}}
 
 
 @dataclass(frozen=True)
