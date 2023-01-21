@@ -2,11 +2,10 @@ from importlib import resources
 
 import yaml
 
-COFIGFILE = "notion_config.yaml"
+_COFIGFILE = "notion_config.yaml"
 
-with resources.path("docs", COFIGFILE) as notion_config:
-    with open(notion_config, encoding="utf-8") as f:
-        conf = yaml.safe_load(f)
+with resources.files("docs").joinpath(_COFIGFILE).open() as f:
+    conf = yaml.safe_load(f)
 
 DB_PROGRESS_KEY = conf["notion"]["database"]["id"]["movie_progress"]
 DB_FILMARKS_KEY = conf["notion"]["database"]["id"]["movie_filmarks"]
