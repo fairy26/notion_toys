@@ -71,10 +71,11 @@ VSCode の場合, `launch.json` を構成しているのでデバッグモード
             integration:
                 token:
                     movie: INTEGRATION_TOKEN
-    database:
-        id:
-            movie_progress: DB_ID
-            movie_filmarks: DB_ID
+
+        database:
+            id:
+                movie_progress: DB_ID
+                movie_filmarks: DB_ID
 
     filmarks:
         url: https://filmarks.com
