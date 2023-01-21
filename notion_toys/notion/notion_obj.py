@@ -96,6 +96,14 @@ class PropUrl(Prop):
 
 
 @dataclass(frozen=True)
+class PropFiles(Prop):
+    file_urls: tuple[str]
+
+    def to_payload(self):
+        return {self.name: {"files": [{"name": "movie_poster", "external": {"url": url}} for url in self.file_urls]}}
+
+
+@dataclass(frozen=True)
 class PropDate(Prop):
     date: date | None
 
@@ -168,7 +176,7 @@ class NotionMoviePage:
     score: PropNumber
     review: PropRichText
     movie_url: PropUrl
-    img_url: PropUrl
+    img_files: PropFiles
     watch_date: PropDate
     release_year: PropNumber
     countries: PropMultiselect = field(hash=False)
@@ -214,7 +222,7 @@ class NotionMoviePage:
         prop["score"] = PropNumber(name="スコア", num=score)
         prop["review"] = PropRichText(name="感想", text=review)
         prop["movie_url"] = PropUrl(name="filmarks", url=movie_url)
-        prop["img_url"] = PropUrl(name="画像", url=img_url)
+        prop["img_files"] = PropFiles(name="ポスター", file_urls=tuple([img_url]))
         prop["watch_date"] = PropDate(name="鑑賞日", date=watch_date)
         prop["release_year"] = PropNumber(name="上映年", num=release_year)
         prop["countries"] = PropMultiselect(name="制作国", items=countries)
@@ -236,7 +244,7 @@ class NotionMoviePage:
             score=prop["スコア"]["number"],
             review=prop["感想"]["rich_text"][0]["text"]["content"],
             movie_url=prop["filmarks"]["url"],
-            img_url=prop["画像"]["url"],
+            img_url=prop["ポスター"]["files"][0]["external"]["url"],
             watch_date=date.fromisoformat(prop["鑑賞日"]["date"]["start"]),
             release_year=prop["上映年"]["number"],
             countries=tuple([item["name"] for item in prop["制作国"]["multi_select"]]),
@@ -253,7 +261,6 @@ class NotionMoviePage:
         return {
             "parent": {"database_id": self.db_id},
             "icon": self.icon_url.to_external_payload(),
-            "cover": self.img_url.to_external_payload(),
             "properties": {
                 **self.title.to_payload(),
                 **self.score.to_payload(),
@@ -266,7 +273,7 @@ class NotionMoviePage:
                 **self.writers.to_payload(),
                 **self.casts.to_payload(),
                 **self.movie_url.to_payload(),
-                **self.img_url.to_payload(),
+                **self.img_files.to_payload(),
                 **self.relation.to_payload(),
             },
         }
@@ -299,9 +306,6 @@ class NotionMoviePage:
                 if attr_name == "root.icon_url":
                     new_prop["icon"] = attr.to_external_payload()
                     continue
-
-                if attr_name == "root.img_url":
-                    new_prop["cover"] = attr.to_external_payload()
 
                 if "properties" in new_prop:
                     new_prop["properties"] |= attr.to_payload()
