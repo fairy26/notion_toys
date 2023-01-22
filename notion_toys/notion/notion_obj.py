@@ -278,17 +278,11 @@ class NotionMoviePage:
             },
         }
 
-    def create(self):
+    def create(self) -> dict:
         url = urljoin(API_URL, "pages")
         r = requests.post(url, headers=HEADERS, data=json.dumps(self._to_payload()))
         r.raise_for_status()
-
-        obj = r.json()
-        return self.from_paylaod(
-            id=obj["id"],
-            db_id=obj["parent"]["database_id"],
-            prop=obj["properties"],
-        )
+        return r.json()
 
     def _diff(self, target: object) -> dict:
         if not isinstance(target, NotionMoviePage):
@@ -320,20 +314,14 @@ class NotionMoviePage:
 
         return new_prop
 
-    def update(self, new_page: object):
+    def update(self, new_page: object) -> dict:
         if not self.id:
             raise ValueError("Notionの映画ページのIDを指定してください")
 
         url = urljoin(API_URL, f"pages/{self.id}")
         r = requests.patch(url, headers=HEADERS, data=json.dumps(self._diff(new_page)))
-        r.raise_for_status()["id"].replace("-", "")
-
-        obj = r.json()
-        return self.from_paylaod(
-            id=obj["id"],
-            db_id=obj["parent"]["database_id"],
-            prop=obj["properties"],
-        )
+        r.raise_for_status()
+        return r.json()
 
 
 @dataclass
@@ -352,13 +340,7 @@ class NotionDB:
 
             data = r.json()
             for obj in data["results"]:
-                self.add(
-                    NotionMoviePage.from_paylaod(
-                        id=obj["id"],
-                        db_id=obj["parent"]["database_id"],
-                        prop=obj["properties"],
-                    )
-                )
+                self.add(obj)
 
             if data["has_more"]:
                 payload["start_cursor"] = data["next_cursor"]
@@ -366,11 +348,19 @@ class NotionDB:
 
             break
 
-    def add(self, child: object):
-        if not isinstance(child, NotionMoviePage):
+    def add(self, obj: object) -> NotionMoviePage:
+        if isinstance(obj, dict):
+            obj = NotionMoviePage.from_paylaod(
+                id=obj["id"],
+                db_id=obj["parent"]["database_id"],
+                prop=obj["properties"],
+            )
+
+        if not isinstance(obj, NotionMoviePage):
             raise ValueError
 
-        self.children[child.movie_url.to_filmarks_id()] = child
+        self.children[obj.movie_url.to_filmarks_id()] = obj
+        return obj
 
     def has(self, page: object) -> bool:
         if not isinstance(page, NotionMoviePage):

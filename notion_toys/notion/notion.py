@@ -29,8 +29,7 @@ def run(logger: Logger, parse_all: bool = False):
 
         if not db.has(npage):
             try:  # レビューの新規作成
-                npage = npage.create()
-                db.add(npage)
+                npage = db.add(npage.create())
                 logger.info(f"同期成功 -「{npage.title.text}」を追加({urljoin(NOTION_URL, npage.id)})")
             except Exception as e:
                 logger.error(f"同期失敗 - 「{npage.title.text}」の追加でエラーが起きました\n{e}\n{npage}")
@@ -41,8 +40,7 @@ def run(logger: Logger, parse_all: bool = False):
 
         if old_page is not None and npage != old_page:
             try:  # レビューの更新
-                npage = old_page.update(npage)
-                db.add(npage)
+                npage = db.add(old_page.update(npage))
                 logger.info(f"同期成功 -「{npage.title.text}」を更新({urljoin(NOTION_URL, npage.id)})")
             except Exception as e:
                 logger.error(f"同期失敗 - 「{npage.title.text}」の更新でエラーが起きました\n{e}\n{npage}")
