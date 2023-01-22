@@ -329,7 +329,32 @@ class NotionDB:
     id: str
     children: dict = field(default_factory=dict)
 
-    def add(self, child: object):
+    def load_pages(self) -> None:
+        payload = {"page_size": 100}  # Max
+
+        while True:
+            r = requests.post(
+                urljoin(API_URL, f"databases/{self.id}/query"), headers=HEADERS, data=json.dumps(payload)
+            )
+            r.raise_for_status()
+
+            data = r.json()
+            for obj in data["results"]:
+                self._add(
+                    NotionMoviePage.from_paylaod(
+                        id=obj["id"],
+                        db_id=obj["parent"]["database_id"],
+                        prop=obj["properties"],
+                    )
+                )
+
+            if data["has_more"]:
+                payload["start_cursor"] = data["next_cursor"]
+                continue
+
+            break
+
+    def _add(self, child: object):
         if not isinstance(child, NotionMoviePage):
             raise ValueError
 

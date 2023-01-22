@@ -1,74 +1,29 @@
-import json
-import re
 from logging import Logger  # type hint
 from urllib.parse import urljoin
 
-import requests
-
-from .filmarks_obj import FilmarksMoviePage, WebPage
+from .filmarks_obj import FilmarksMoviePage, FilmarksMyPage
 from .notion_obj import NotionDB, NotionMoviePage
-from .utils import (
-    API_URL,
-    DB_FILMARKS_KEY,
-    FILMARKS_ID,
-    FILMARKS_URL,
-    HEADERS,
-    NOTION_URL,
-)
+from .utils import DB_FILMARKS_KEY, NOTION_URL
 
 
 def run(logger: Logger):
 
     # Notionデータベースの情報を取ってくる
     db = NotionDB(id=DB_FILMARKS_KEY)
-
-    movie_page_objs = []
-    payload = {"page_size": 100}  # Max
-    while True:
-        r = requests.post(
-            urljoin(API_URL, f"databases/{DB_FILMARKS_KEY}/query"), headers=HEADERS, data=json.dumps(payload)
-        )
-        r.raise_for_status()
-
-        data = r.json()
-        movie_page_objs += data["results"]
-        if data["has_more"]:
-            payload["start_cursor"] = data["next_cursor"]
-            continue
-
-        break
-
-    for obj in movie_page_objs:
-        db.add(
-            NotionMoviePage.from_paylaod(
-                id=obj["id"],
-                db_id=obj["parent"]["database_id"],
-                prop=obj["properties"],
-            )
-        )
-
+    db.load_pages()
     logger.debug(f"Notion読取完了 - {len(db.children)}ページ")
 
     # Filmarksのスクレイピング
-    filmarks_mypage = WebPage(url=urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}"))
-    soup = filmarks_mypage.scrape()
-
-    # レビューがマイページ何ページにわたるかスクレイピング
-    num_pages = 1
-    result = re.match(
-        pattern=f"/users/{FILMARKS_ID}\?page=(\d+)",
-        string=soup.find("a", class_="c-pagination__last")["href"],
-    )
-    if result:
-        num_pages = int(result.group(1))
+    f_mypage = FilmarksMyPage()
+    f_mypage.parse_num_pages()
 
     # 全レビューをNotionに
-    for num in range(1, num_pages + 1):
-        filmarks_mypage.url = urljoin(FILMARKS_URL, f"/users/{FILMARKS_ID}?page={num}")
-        soup = filmarks_mypage.scrape()
+    for num in range(1, f_mypage.num_pages + 1):
+        f_mypage.go_to({"page": num})
+        f_mypage.parse_cards()
 
-        for card_title in soup.find_all("h3", class_="c-content-card__title"):
-            fpage = FilmarksMoviePage(url=urljoin(FILMARKS_URL, card_title.find("a")["href"]))
+        for url in f_mypage.card_linked_urls:
+            fpage = FilmarksMoviePage(url=url)
             npage = NotionMoviePage.init(**fpage.parse())
 
             if not db.has(npage):
