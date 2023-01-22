@@ -278,11 +278,17 @@ class NotionMoviePage:
             },
         }
 
-    def create(self) -> str:
+    def create(self):
         url = urljoin(API_URL, "pages")
         r = requests.post(url, headers=HEADERS, data=json.dumps(self._to_payload()))
         r.raise_for_status()
-        return r.json()["id"].replace("-", "")
+
+        obj = r.json()
+        return self.from_paylaod(
+            id=obj["id"],
+            db_id=obj["parent"]["database_id"],
+            prop=obj["properties"],
+        )
 
     def _diff(self, target: object) -> dict:
         if not isinstance(target, NotionMoviePage):
@@ -314,14 +320,20 @@ class NotionMoviePage:
 
         return new_prop
 
-    def update(self, new_page: object) -> str:
+    def update(self, new_page: object):
         if not self.id:
             raise ValueError("Notionの映画ページのIDを指定してください")
 
         url = urljoin(API_URL, f"pages/{self.id}")
         r = requests.patch(url, headers=HEADERS, data=json.dumps(self._diff(new_page)))
-        r.raise_for_status()
-        return r.json()["id"].replace("-", "")
+        r.raise_for_status()["id"].replace("-", "")
+
+        obj = r.json()
+        return self.from_paylaod(
+            id=obj["id"],
+            db_id=obj["parent"]["database_id"],
+            prop=obj["properties"],
+        )
 
 
 @dataclass
@@ -340,7 +352,7 @@ class NotionDB:
 
             data = r.json()
             for obj in data["results"]:
-                self._add(
+                self.add(
                     NotionMoviePage.from_paylaod(
                         id=obj["id"],
                         db_id=obj["parent"]["database_id"],
@@ -354,7 +366,7 @@ class NotionDB:
 
             break
 
-    def _add(self, child: object):
+    def add(self, child: object):
         if not isinstance(child, NotionMoviePage):
             raise ValueError
 
