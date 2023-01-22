@@ -29,7 +29,7 @@ $ poetry run python -m notion_toys --filmarks
 
 VSCode の場合, `launch.json` を構成しているのでデバッグモードでも実行可能
 
-##　初期設定
+## 初期設定
 
 ### Notion 上での設定
 
@@ -38,7 +38,7 @@ VSCode の場合, `launch.json` を構成しているのでデバッグモード
     [My integrations](https://www.notion.so/my-integrations) で新しい integration を追加する
 
     -   Name 以外デフォルトで OK
-    -   Secrets/Internal Integration Token をメモする
+    -   Secrets > Internal Integration Token をメモする
 
 2.  Notion の映画ページを作成し、配下のデータベースに作成した integration を追加する
 
@@ -46,24 +46,29 @@ VSCode の場合, `launch.json` を構成しているのでデバッグモード
 
     ページ構成は以下の通り
 
-        *   映画ページ
-            *   目次・情報
-            *   進捗
-                *   映画進捗 DB
-            *   一覧
-                *   映画一覧 DB
+        *   目次・情報
+        *   進捗
+            *   映画進捗 DB
+        *   一覧
+            *   映画一覧 DB
 
-    このうち（「映画ページ」）「映画進捗 DB」「映画一覧 DB」のそれぞれに integration を追加する
+    このうち「映画進捗 DB」「映画一覧 DB」のそれぞれに integration を追加する
 
-    -   (DB は右の Open as full page) > 右上の ... > Add connections > integration を選択
+    -   DB 右の Open as full page > 右上の ... > Add connections > integration を選択
 
 3.  データベースの ID をメモする
 
-    DB を Open as full page した URL (`https://www.notion.so/{YOUR_NOTION_DOMAIN}/{DB_ID}?v={DB_VIEW_ID}`) の `DB_ID` の部分
+    DB を Open as full page した URL
+
+    `https://www.notion.so/{YOUR_NOTION_DOMAIN}/{DB_ID}?v={DB_VIEW_ID}`
+
+    の `DB_ID` の部分
 
 ### ドキュメントの追加
 
-1.  `docs/notion_config.yaml`に以下の形式で記述する
+1.  メモしたシークレットキーらを `docs/notion_config.yaml` に記述する
+
+    形式は以下の通り
 
     ```yaml
     notion:
@@ -86,7 +91,7 @@ VSCode の場合, `launch.json` を構成しているのでデバッグモード
         id: FILMARKS_ID
     ```
 
-# メモ
+# 注意事項
 
--   注意事項
-    -   視聴方法や鑑賞日などアプリで登録できるレビューは Web で確認できないため自動登録不可
+-   Filmarks のスクレイピングは[規約](https://filmarks.com/term)上問題ないと判断しているが、利用は自己責任で
+-   アプリで登録したレビューのうち視聴方法や鑑賞日などの項目は Web で確認できないため自動登録不可
