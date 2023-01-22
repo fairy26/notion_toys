@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "module": "${workspaceFolderBasename}",
-            "args": ["--filmarks"],
+            "args": ["--verbose", "--filmarks"],
             "console": "integratedTerminal",
             "justMyCode": true
         }

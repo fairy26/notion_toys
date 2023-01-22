@@ -6,7 +6,7 @@ from .notion_obj import NotionDB, NotionMoviePage
 from .utils import DB_FILMARKS_KEY, NOTION_URL
 
 
-def run(logger: Logger):
+def run(logger: Logger, parse_all: bool = False):
 
     # Notionデータベースの情報を取ってくる
     db = NotionDB(id=DB_FILMARKS_KEY)
@@ -15,9 +15,10 @@ def run(logger: Logger):
 
     # Filmarksのスクレイピング
     f_mypage = FilmarksMyPage()
-    f_mypage.parse_num_pages()
+    if parse_all:
+        f_mypage.parse_num_pages()
 
-    # 全レビューをNotionに
+    # レビューをNotionに
     for num in range(1, f_mypage.num_pages + 1):
         f_mypage.go_to({"page": num})
         f_mypage.parse_cards()
