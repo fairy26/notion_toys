@@ -1,15 +1,11 @@
 from . import argparser, notion
-from .logger import DEBUG, ERROR, get_logger
+from .logger import get_logger
 
 
 def main():
-    logger = get_logger()
-
     args = argparser.parse()
-    if args.verbose:
-        logger.setLevel(DEBUG)
-    if args.quiet:
-        logger.setLevel(ERROR)
+
+    logger = get_logger(conf=args)
 
     if args.filmarks:
         logger.info("FilmarksとNotionを同期します")

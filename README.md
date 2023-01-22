@@ -24,6 +24,7 @@ $ poetry run python -m notion_toys --filmarks
     -   `-a`, `--all`: 対象を Filmarks マイページの全ページにする（デフォルト: マイページの 1 ページ目のみ）
     -   `-q`, `--quiet`: ログの出力を ERROR 以上にする
     -   `-v`, `--verbose`: ログの出力を DEBUG 以上にする
+    -   `--debug`: ログの出力をコンソールのみにする
 
 VSCode の場合, `launch.json` を構成しているのでデバッグモードでも実行可能
 

@@ -20,8 +20,8 @@ handlers:
 loggers:
   notion_toys:
     level: INFO
-    handlers: [console, file]
+    handlers: [file]
     propagate: no
 root:
-  level: INFO
+  level: DEBUG
   handlers: [console]
