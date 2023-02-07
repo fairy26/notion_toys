@@ -1,4 +1,5 @@
 import json
+import pickle
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -8,7 +9,15 @@ from urllib.parse import urljoin, urlparse
 import requests
 from deepdiff import DeepDiff
 
-from .utils import API_URL, DB_FILMARKS_KEY, DB_PROGRESS_KEY, FILMARKS_URL, HEADERS
+from .utils import (
+    API_URL,
+    DB_FILMARKS_KEY,
+    DB_PROGRESS_KEY,
+    FILMARKS_URL,
+    HEADERS,
+    SERIALIZED_NOTION_PAGES_PATH,
+    use_serialized_data,
+)
 
 
 @cache
@@ -328,8 +337,14 @@ class NotionMoviePage:
 class NotionDB:
     id: str
     children: dict = field(default_factory=dict)
+    updated: bool = False
 
     def load_pages(self) -> None:
+        if use_serialized_data():
+            with open(SERIALIZED_NOTION_PAGES_PATH, "rb") as f:
+                self.children = pickle.load(f)
+            return
+
         payload = {"page_size": 100}  # Max
 
         while True:
@@ -348,6 +363,8 @@ class NotionDB:
 
             break
 
+        self.serialize()
+
     def add(self, obj: object) -> NotionMoviePage:
         if isinstance(obj, dict):
             obj = NotionMoviePage.from_paylaod(
@@ -360,6 +377,7 @@ class NotionDB:
             raise ValueError
 
         self.children[obj.movie_url.to_filmarks_id()] = obj
+        self.updated = True
         return obj
 
     def has(self, page: object) -> bool:
@@ -376,3 +394,7 @@ class NotionDB:
             return self.children[page.movie_url.to_filmarks_id()]
         except KeyError:
             return None
+
+    def serialize(self):
+        with open(SERIALIZED_NOTION_PAGES_PATH, "wb") as f:
+            pickle.dump(self.children, f)

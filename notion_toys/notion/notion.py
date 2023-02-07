@@ -48,3 +48,6 @@ def run(logger: Logger, parse_all: bool = False):
                 continue
 
         logger.debug(f"変更なし -「{npage.title.text}」")
+
+    if db.updated:
+        db.serialize()
