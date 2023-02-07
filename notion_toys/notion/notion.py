@@ -49,5 +49,6 @@ def run(logger: Logger, parse_all: bool = False):
 
         logger.debug(f"変更なし -「{npage.title.text}」")
 
+    # Notionのページをキャッシュしておく
     if db.updated:
         db.serialize()

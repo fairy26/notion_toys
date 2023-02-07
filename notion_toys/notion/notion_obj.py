@@ -395,6 +395,6 @@ class NotionDB:
         except KeyError:
             return None
 
-    def serialize(self):
+    def serialize(self) -> None:
         with open(SERIALIZED_NOTION_PAGES_PATH, "wb") as f:
             pickle.dump(self.children, f)

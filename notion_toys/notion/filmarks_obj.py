@@ -102,7 +102,7 @@ class FilmarksMoviePage(WebPage):
 
         # タイトル
         self.title = detail.find("h2", class_="p-content-detail__title").find("span").text
-        # 　ポスターURL
+        # ポスターURL
         self.img_url = detail.find("img")["src"]
         # 制作年
         self.release_year = int(detail.find("h2", class_="p-content-detail__title").find("a").text[:-1])

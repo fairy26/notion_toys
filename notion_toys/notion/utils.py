@@ -38,9 +38,9 @@ def use_serialized_data(last_modified_limit_weeks: int = 1) -> bool:
     """
     if not SERIALIZED_NOTION_PAGES_PATH.exists():
         return False
+
     # いつシリアライズされたか: pickleファイルがいつ更新されたか
     _last_modified_dt = datetime.fromtimestamp(SERIALIZED_NOTION_PAGES_PATH.stat().st_mtime)
-
     # データは最新か: シリアライズされたのは`last_modified_limit_weeks`週間以内か
     _last_modified_limit = datetime.now() - timedelta(weeks=last_modified_limit_weeks)
 
