@@ -19,7 +19,7 @@ class WebPage:
         self.scrape()
 
     def scrape(self) -> None:
-        r = requests.get(self.url)
+        r = requests.get(self.url)  # TODO: Timeout Error等が起きる可能性あり
         r.raise_for_status()
         self.soup = BeautifulSoup(r.text, self.parser)
 

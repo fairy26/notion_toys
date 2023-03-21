@@ -14,7 +14,11 @@ def run(logger: Logger, parse_all: bool = False):
     logger.debug(f"Notion読取完了 - {len(db.children)}ページ")
 
     # Filmarksのスクレイピング
-    f_mypage = FilmarksMyPage()
+    try:
+        f_mypage = FilmarksMyPage()
+    except Exception as e:
+        logger.error(f"Filmarksのマイページ読取失敗 - {e}")
+        return
     if parse_all:
         f_mypage.parse_num_pages()
 
@@ -24,7 +28,11 @@ def run(logger: Logger, parse_all: bool = False):
         f_mypage.parse_cards()
 
     for url in f_mypage.card_linked_urls:
-        fpage = FilmarksMoviePage(url=url)
+        try:
+            fpage = FilmarksMoviePage(url=url)
+        except Exception as e:
+            logger.error(f"Filmarksの映画ページ({url})読取失敗 - {e}")
+            continue
         npage = NotionMoviePage.init(**fpage.parse())
 
         if not db.has(npage):
