@@ -7,10 +7,13 @@ from .utils import DB_FILMARKS_KEY, NOTION_URL
 
 
 def run(logger: Logger, parse_all: bool = False):
-
     # Notionデータベースの情報を取ってくる
     db = NotionDB(id=DB_FILMARKS_KEY)
-    db.load_pages()
+    try:
+        db.load_pages()
+    except Exception as e:
+        logger.error(f"Notionの読取失敗 - {e}")
+        return
     logger.debug(f"Notion読取完了 - {len(db.children)}ページ")
 
     # Filmarksのスクレイピング
