@@ -345,7 +345,8 @@ class NotionDB:
                 self.children = pickle.load(f)
             return
 
-        payload = {"page_size": 100}  # Max
+        payload = {"page_size": 10}
+        # 100だとリクエストが重すぎて 503 Error になる
 
         while True:
             r = requests.post(
